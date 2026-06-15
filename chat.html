@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Assistant Traiteur — Carrefour</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; }
+    body {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 60px minmax(0, 1fr) 40px;
+      font-family: "Inter", system-ui, sans-serif;
+      background: #f5f7fa;
+      color: #1a1a1a;
+    }
+    .navbar {
+      background: rgb(245, 245, 245);
+      color: white;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+    }
+    .navbar-store {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(38, 38, 38, 0.3);
+      color: black;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .cart-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(38, 38, 38, 0.3);
+      color: black;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .cart-count {
+      background: #e4002b;
+      color: white;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 11px;
+      font-weight: 700;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    #shoppergpt-chat { min-height: 0; height: 100%; overflow: hidden; }
+    .footer {
+      background: #2f2f2f;
+      color: white;
+      font-size: 12px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      width: min(420px, 90vw);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+    .modal h2 { font-size: 18px; font-weight: 700; margin-bottom: 14px; }
+    .store-option {
+      display: flex;
+      padding: 12px 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 2px solid #e5e7eb;
+      margin-bottom: 8px;
+      background: white;
+    }
+    .store-option:hover, .store-option.selected { border-color: #004e9a; background: #eff6ff; }
+    .store-name { font-weight: 500; font-size: 14px; }
+    .store-address { font-size: 12px; color: #6b7280; margin-top: 2px; }
+    .modal-close {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      border: none;
+      background: #004e9a;
+      color: white;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+      <button class="navbar-store" onclick="openStoreModal()">
+        📍 <span id="current-store-name">Paris République</span>
+      </button>
+      <button class="cart-btn" id="cart-btn">
+        Panier
+        <span class="cart-count" id="cart-count">0</span>
+      </button>
+  </nav>
+
+  <!-- ShopperGPT widget -->
+  <div id="shoppergpt-chat"></div>
+  <!-- ShopperGPT widget -->
+
+  <footer class="footer">
+    <span>Carrefour Traiteur Sandbox</span>
+    <span>OpenMage integration preview</span>
+  </footer>
+
+  <div class="modal-overlay" id="store-modal">
+    <div class="modal">
+      <h2>📍 Choisir mon magasin</h2>
+      <div id="store-list"></div>
+      <button class="modal-close" onclick="closeStoreModal()">Confirmer</button>
+    </div>
+  </div>
+
+  <script>
+    const STORES = [
+      { store_id: "42", store_name: "Paris République", address: "1 Pl. de la République, 75003 Paris" },
+      { store_id: "17", store_name: "Paris Nation", address: "10 Pl. de la Nation, 75011 Paris" },
+      { store_id: "88", store_name: "Paris Montparnasse", address: "22 Rue de l'Arrivée, 75015 Paris" },
+      { store_id: "55", store_name: "Boulogne-Billancourt", address: "78 Route de la Reine, 92100 Boulogne" }
+    ];
+
+    let currentStore = STORES[0];
+    let cartCount = 0;
+
+    function updateCartUI() {
+      const countEl = document.getElementById("cart-count");
+      if (!countEl) return;
+      countEl.textContent = String(cartCount);
+      countEl.style.display = cartCount > 0 ? "flex" : "none";
+    }
+
+    function openStoreModal() {
+      const list = document.getElementById("store-list");
+      if (!list) return;
+      list.innerHTML = STORES.map((s) => `
+        <div class="store-option ${s.store_id === currentStore.store_id ? "selected" : ""}" onclick="selectStore('${s.store_id}', this)">
+          <div>
+            <div class="store-name">📍 ${s.store_name}</div>
+            <div class="store-address">${s.address}</div>
+          </div>
+        </div>
+      `).join("");
+      document.getElementById("store-modal")?.classList.add("open");
+    }
+
+    function closeStoreModal() {
+      document.getElementById("store-modal")?.classList.remove("open");
+    }
+
+    function selectStore(storeId, triggerEl) {
+      const store = STORES.find((s) => s.store_id === storeId);
+      if (!store) return;
+      currentStore = store;
+      document.getElementById("current-store-name").textContent = store.store_name;
+      document.querySelectorAll(".store-option").forEach((el) => el.classList.remove("selected"));
+      if (triggerEl) triggerEl.classList.add("selected");
+      window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
+        detail: { store_id: store.store_id, store_name: store.store_name }
+      }));
+      closeStoreModal();
+    }
+
+    function fireInitialEvents() {
+      const sessionDetail = { session_id: "sess_" + Math.random().toString(36).slice(2, 12) };
+      window.dispatchEvent(new CustomEvent("shoppergpt:session", { detail: sessionDetail }));
+      window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
+        detail: { store_id: currentStore.store_id, store_name: currentStore.store_name }
+      }));
+    }
+
+    window.addEventListener("shoppergpt:cart_updated", (e) => {
+      const detail = e.detail || {};
+
+      if (typeof detail.cart_count === "number") {
+        cartCount = Math.max(0, detail.cart_count);
+        updateCartUI();
+        return;
+      }
+
+      if (detail.success === false) return;
+
+      const action = String(detail.action || "").toLowerCase();
+      if (action.includes("remove")) {
+        cartCount = Math.max(0, cartCount - 1);
+      } else if (action.includes("add")) {
+        cartCount += 1;
+      } else {
+        return;
+      }
+
+      updateCartUI();
+    });
+
+    window.addEventListener("shoppergpt:change_shop", (e) => {
+      const detail = e.detail || {};
+      const store = STORES.find((s) => s.store_id === detail.store_id);
+      if (!store) return;
+      currentStore = store;
+      document.getElementById("current-store-name").textContent = store.store_name;
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      updateCartUI();
+      setTimeout(fireInitialEvents, 500);
+    });
+  </script>
+
+  <!-- ShopperGPT widget -->
+  <script>
+    window.SHOPPERGPT_CONFIG = {
+      apiUrl: "https://waib-gateway-dev.redpill.paris",
+      clientId: "carrefour_traiteur"
+    };
+  </script>
+  <!-- Local dev: src="../shopper-gpt-carrefour-scriptag/dist/agent.js" -->
+  <script src="/agent.js" defer></script>
+</body>
+</html>
