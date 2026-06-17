@@ -114,7 +114,7 @@
 <body>
   <nav class="navbar">
       <button class="navbar-store" onclick="openStoreModal()">
-        📍 <span id="current-store-name">Paris République</span>
+        📍 <span id="current-store-name">Choisir un magasin</span>
       </button>
       <button class="cart-btn" id="cart-btn">
         Panier
@@ -134,21 +134,40 @@
   <div class="modal-overlay" id="store-modal">
     <div class="modal">
       <h2>📍 Choisir mon magasin</h2>
-      <div id="store-list"></div>
-      <button class="modal-close" onclick="closeStoreModal()">Confirmer</button>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input id="store-postcode" type="text" inputmode="numeric" placeholder="Code postal (ex. 75001)"
+          style="flex:1; padding:10px 12px; border:1px solid #d1d5db; border-radius:10px; font-size:14px;" />
+        <button onclick="searchStores()"
+          style="padding:10px 16px; border:none; background:#004e9a; color:#fff; border-radius:10px; font-weight:600; cursor:pointer;">
+          Rechercher
+        </button>
+      </div>
+      <div id="store-list" style="max-height:50vh; overflow-y:auto;"></div>
+      <button class="modal-close" onclick="closeStoreModal()">Fermer</button>
     </div>
   </div>
 
   <script>
-    const STORES = [
-      { store_id: "42", store_name: "Paris République", address: "1 Pl. de la République, 75003 Paris" },
-      { store_id: "17", store_name: "Paris Nation", address: "10 Pl. de la Nation, 75011 Paris" },
-      { store_id: "88", store_name: "Paris Montparnasse", address: "22 Rue de l'Arrivée, 75015 Paris" },
-      { store_id: "55", store_name: "Boulogne-Billancourt", address: "78 Route de la Reine, 92100 Boulogne" }
-    ];
+    const MODE_LABELS = {
+      retrait: "Retrait sur place",
+      drive: "Retrait drive",
+      livraison: "Livraison",
+    };
 
-    let currentStore = STORES[0];
+    let currentStore = null;   // { store_id, store_name } once the user picks one
+    let lastStores = [];        // last fetched store list (for selection lookup)
     let cartCount = 0;
+
+    // One session id for the whole page = the X-Session-Id (PHPSESSID in prod).
+    // Keys the backend state/history/store. In prod this comes from the Magento cookie.
+    const SESSION_ID = "sess_" + Math.random().toString(36).slice(2, 12);
+
+    function apiBase() {
+      return (window.SHOPPERGPT_CONFIG && window.SHOPPERGPT_CONFIG.apiUrl) || "";
+    }
+    function clientId() {
+      return (window.SHOPPERGPT_CONFIG && window.SHOPPERGPT_CONFIG.clientId) || "carrefour_traiteur";
+    }
 
     function updateCartUI() {
       const countEl = document.getElementById("cart-count");
@@ -158,42 +177,101 @@
     }
 
     function openStoreModal() {
-      const list = document.getElementById("store-list");
-      if (!list) return;
-      list.innerHTML = STORES.map((s) => `
-        <div class="store-option ${s.store_id === currentStore.store_id ? "selected" : ""}" onclick="selectStore('${s.store_id}', this)">
-          <div>
-            <div class="store-name">📍 ${s.store_name}</div>
-            <div class="store-address">${s.address}</div>
-          </div>
-        </div>
-      `).join("");
       document.getElementById("store-modal")?.classList.add("open");
+      const input = document.getElementById("store-postcode");
+      if (input) { input.focus(); }
+      if (!lastStores.length) {
+        document.getElementById("store-list").innerHTML =
+          '<p style="color:#6b7280;font-size:13px;">Entrez un code postal pour voir les magasins proches.</p>';
+      }
     }
 
     function closeStoreModal() {
       document.getElementById("store-modal")?.classList.remove("open");
     }
 
-    function selectStore(storeId, triggerEl) {
-      const store = STORES.find((s) => s.store_id === storeId);
+    async function searchStores() {
+      const input = document.getElementById("store-postcode");
+      const list = document.getElementById("store-list");
+      const postcode = (input?.value || "").trim();
+      if (!postcode) { input?.focus(); return; }
+
+      list.innerHTML = '<p style="color:#6b7280;font-size:13px;">Recherche en cours…</p>';
+      try {
+        const res = await fetch(`${apiBase()}/stores?postcode=${encodeURIComponent(postcode)}&limit=10`, {
+          headers: { "x-client-id": clientId() },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        lastStores = data.stores || [];
+        renderStores(lastStores);
+      } catch (e) {
+        list.innerHTML = `<p style="color:#b91c1c;font-size:13px;">Erreur de recherche (${e.message}).</p>`;
+      }
+    }
+
+    function renderStores(stores) {
+      const list = document.getElementById("store-list");
+      if (!stores.length) {
+        list.innerHTML = '<p style="color:#6b7280;font-size:13px;">Aucun magasin trouvé pour ce code postal.</p>';
+        return;
+      }
+      list.innerHTML = stores.map((s) => {
+        // Each available mode is a clickable button → selects store + mode (like Carrefour).
+        const buttons = (s.modes || [])
+          .map((m) => `<button onclick="selectStore('${s.store_id}','${m}')" style="cursor:pointer;background:#004e9a;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;margin-right:8px;margin-top:8px;">${MODE_LABELS[m] || m}</button>`)
+          .join("");
+        const dist = s.distance_km != null ? `${s.distance_km} km` : "";
+        const selected = currentStore && String(currentStore.store_id) === String(s.store_id);
+        return `
+          <div class="store-option ${selected ? "selected" : ""}" style="cursor:default;">
+            <div style="width:100%;">
+              <div style="display:flex;justify-content:space-between;gap:8px;">
+                <div class="store-name">📍 ${s.name} <span style="color:#9ca3af;font-weight:400;font-size:12px;">${s.type_label || ""}</span></div>
+                <div style="color:#6b7280;font-size:12px;white-space:nowrap;">${dist}</div>
+              </div>
+              <div class="store-address">${s.address || ""}</div>
+              <div>${buttons}</div>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    async function selectStore(storeId, mode) {
+      const store = lastStores.find((s) => String(s.store_id) === String(storeId));
       if (!store) return;
-      currentStore = store;
-      document.getElementById("current-store-name").textContent = store.store_name;
-      document.querySelectorAll(".store-option").forEach((el) => el.classList.remove("selected"));
-      if (triggerEl) triggerEl.classList.add("selected");
+      // livraison → send the LAD zone id ; retrait/drive → null (drive mode server-side)
+      const lad_zone_id = mode === "livraison" ? (store.lad_zone_id ?? null) : null;
+      try {
+        const res = await fetch(`${apiBase()}/store/set`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-client-id": clientId(),
+            "X-Session-Id": SESSION_ID,
+          },
+          body: JSON.stringify({ store_id: Number(store.store_id), lad_zone_id }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (e) {
+        console.warn("[shopper-gpt] /store/set failed:", e);
+      }
+      currentStore = { store_id: store.store_id, store_name: store.name };
+      document.getElementById("current-store-name").textContent =
+        `${store.name} · ${MODE_LABELS[mode] || mode}`;
       window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
-        detail: { store_id: store.store_id, store_name: store.store_name }
+        detail: { store_id: store.store_id, store_name: store.name }
       }));
       closeStoreModal();
     }
 
     function fireInitialEvents() {
-      const sessionDetail = { session_id: "sess_" + Math.random().toString(36).slice(2, 12) };
-      window.dispatchEvent(new CustomEvent("shoppergpt:session", { detail: sessionDetail }));
-      window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
-        detail: { store_id: currentStore.store_id, store_name: currentStore.store_name }
-      }));
+      window.dispatchEvent(new CustomEvent("shoppergpt:session", { detail: { session_id: SESSION_ID } }));
+      if (currentStore) {
+        window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
+          detail: { store_id: currentStore.store_id, store_name: currentStore.store_name }
+        }));
+      }
     }
 
     window.addEventListener("shoppergpt:cart_updated", (e) => {
@@ -221,26 +299,54 @@
 
     window.addEventListener("shoppergpt:change_shop", (e) => {
       const detail = e.detail || {};
-      const store = STORES.find((s) => s.store_id === detail.store_id);
-      if (!store) return;
-      currentStore = store;
-      document.getElementById("current-store-name").textContent = store.store_name;
+      if (!detail.store_id) return;
+      const store = lastStores.find((s) => String(s.store_id) === String(detail.store_id));
+      const name = store ? store.name : (detail.store_name || `Magasin ${detail.store_id}`);
+      currentStore = { store_id: detail.store_id, store_name: name };
+      document.getElementById("current-store-name").textContent = name;
     });
 
     window.addEventListener("DOMContentLoaded", () => {
       updateCartUI();
+      const input = document.getElementById("store-postcode");
+      if (input) {
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") searchStores(); });
+      }
       setTimeout(fireInitialEvents, 500);
     });
   </script>
 
-  <!-- ShopperGPT widget -->
+  <!-- ShopperGPT widget — auto-switches between local dev and deployed -->
   <script>
-    window.SHOPPERGPT_CONFIG = {
-      apiUrl: "https://waib-gateway-dev.redpill.paris",
-      clientId: "carrefour_traiteur"
-    };
+    (function () {
+      // Local = opened from file:// or served on localhost/127.0.0.1
+      var host = window.location.hostname;
+      var isLocal = host === "localhost" || host === "127.0.0.1" || host === "";
+      // Local: hit the waib-api directly on :8000. Deployed: go through the gateway.
+      var apiUrl = isLocal ? "http://127.0.0.1:8000" : "https://waib-gateway-dev.redpill.paris";
+
+      // Fallback config (the widget prefers the script's data-* below).
+      window.SHOPPERGPT_CONFIG = {
+        apiUrl: apiUrl,
+        clientId: "carrefour_traiteur",
+        sessionId: SESSION_ID, // sandbox mock of the Carrefour PHPSESSID
+      };
+
+      // Local: load the freshly-built local bundle (sibling repo on disk).
+      // Deployed: load the published bundle from Vercel.
+      var src = isLocal
+        ? "../shopper-gpt-carrefour-scriptag/dist/agent.js"
+        : "https://shoppergpt-carrefour-scriptag.vercel.app/agent.js";
+
+      var s = document.createElement("script");
+      s.src = src;
+      s.defer = true;
+      // Mirror the prod embed: session + api passed via data-* on the script tag.
+      s.dataset.sessionId = SESSION_ID;
+      s.dataset.apiUrl = apiUrl;
+      s.dataset.clientId = "carrefour_traiteur";
+      document.body.appendChild(s);
+    })();
   </script>
-  <!-- Local dev: src="../shopper-gpt-carrefour-scriptag/dist/agent.js" -->
-  <script src="https://shoppergpt-carrefour-scriptag.vercel.app/agent.js" defer></script>
 </body>
 </html>
