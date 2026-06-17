@@ -134,6 +134,7 @@
   <div class="modal-overlay" id="store-modal">
     <div class="modal">
       <h2>📍 Choisir mon magasin</h2>
+      <div id="current-store-info"></div>
       <div style="display:flex; gap:8px; margin-bottom:12px;">
         <input id="store-postcode" type="text" inputmode="numeric" placeholder="Code postal (ex. 75001)"
           style="flex:1; padding:10px 12px; border:1px solid #d1d5db; border-radius:10px; font-size:14px;" />
@@ -176,8 +177,23 @@
       countEl.style.display = cartCount > 0 ? "flex" : "none";
     }
 
+    function renderCurrentStoreInfo() {
+      const el = document.getElementById("current-store-info");
+      if (!el) return;
+      if (!currentStore) { el.innerHTML = ""; return; }
+      const modeTxt = currentStore.mode ? ` · ${MODE_LABELS[currentStore.mode] || currentStore.mode}` : "";
+      const addr = currentStore.address ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${currentStore.address}</div>` : "";
+      el.innerHTML = `
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#004e9a;font-weight:700;text-transform:uppercase;">Magasin sélectionné</div>
+          <div style="font-weight:600;font-size:14px;margin-top:4px;"> ${currentStore.store_name}${modeTxt}</div>
+          ${addr}
+        </div>`;
+    }
+
     function openStoreModal() {
       document.getElementById("store-modal")?.classList.add("open");
+      renderCurrentStoreInfo();
       const input = document.getElementById("store-postcode");
       if (input) { input.focus(); }
       if (!lastStores.length) {
@@ -227,7 +243,7 @@
           <div class="store-option ${selected ? "selected" : ""}" style="cursor:default;">
             <div style="width:100%;">
               <div style="display:flex;justify-content:space-between;gap:8px;">
-                <div class="store-name">📍 ${s.name} <span style="color:#9ca3af;font-weight:400;font-size:12px;">${s.type_label || ""}</span></div>
+                <div class="store-name"> ${s.name} <span style="color:#9ca3af;font-weight:400;font-size:12px;">${s.type_label || ""}</span></div>
                 <div style="color:#6b7280;font-size:12px;white-space:nowrap;">${dist}</div>
               </div>
               <div class="store-address">${s.address || ""}</div>
@@ -250,13 +266,18 @@
             "x-client-id": clientId(),
             "X-Session-Id": SESSION_ID,
           },
-          body: JSON.stringify({ store_id: Number(store.store_id), lad_zone_id }),
+          body: JSON.stringify({ store_id: Number(store.store_id), lad_zone_id, mode }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } catch (e) {
         console.warn("[shopper-gpt] /store/set failed:", e);
       }
-      currentStore = { store_id: store.store_id, store_name: store.name };
+      currentStore = {
+        store_id: store.store_id,
+        store_name: store.name,
+        mode: mode,
+        address: store.address,
+      };
       document.getElementById("current-store-name").textContent =
         `${store.name} · ${MODE_LABELS[mode] || mode}`;
       window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
@@ -302,8 +323,14 @@
       if (!detail.store_id) return;
       const store = lastStores.find((s) => String(s.store_id) === String(detail.store_id));
       const name = store ? store.name : (detail.store_name || `Magasin ${detail.store_id}`);
-      currentStore = { store_id: detail.store_id, store_name: name };
-      document.getElementById("current-store-name").textContent = name;
+      currentStore = {
+        store_id: detail.store_id,
+        store_name: name,
+        mode: detail.mode,
+        address: store ? store.address : undefined,
+      };
+      const modeTxt = detail.mode ? ` · ${MODE_LABELS[detail.mode] || detail.mode}` : "";
+      document.getElementById("current-store-name").textContent = `${name}${modeTxt}`;
     });
 
     window.addEventListener("DOMContentLoaded", () => {
