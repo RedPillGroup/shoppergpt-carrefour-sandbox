@@ -277,13 +277,43 @@
         store_name: store.name,
         mode: mode,
         address: store.address,
+        lad_zone_id: lad_zone_id,
       };
+      // Persist so next reload auto-restores + re-registers with backend
+      try { localStorage.setItem("sgpt_store", JSON.stringify(currentStore)); } catch(e) {}
       document.getElementById("current-store-name").textContent =
         `${store.name} · ${MODE_LABELS[mode] || mode}`;
       window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
         detail: { store_id: store.store_id, store_name: store.name }
       }));
       closeStoreModal();
+    }
+
+    async function restoreStoredStore() {
+      try {
+        const raw = localStorage.getItem("sgpt_store");
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        if (!s || !s.store_id) return;
+        // Re-register with the new session's backend
+        await fetch(`${apiBase()}/store/set`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-client-id": clientId(),
+            "X-Session-Id": SESSION_ID,
+          },
+          body: JSON.stringify({ store_id: Number(s.store_id), lad_zone_id: s.lad_zone_id ?? null, mode: s.mode }),
+        });
+        currentStore = s;
+        const modeTxt = s.mode ? ` · ${MODE_LABELS[s.mode] || s.mode}` : "";
+        document.getElementById("current-store-name").textContent = `${s.store_name}${modeTxt}`;
+        window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
+          detail: { store_id: s.store_id, store_name: s.store_name }
+        }));
+      } catch(e) {
+        console.warn("[shopper-gpt] store restore failed:", e);
+      }
     }
 
     function fireInitialEvents() {
@@ -339,7 +369,9 @@
       if (input) {
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") searchStores(); });
       }
-      setTimeout(fireInitialEvents, 500);
+      // Restore + re-register stored store before firing initial events so the widget
+      // sees the store immediately on first render (no re-selection needed each reload).
+      restoreStoredStore().finally(() => setTimeout(fireInitialEvents, 500));
     });
   </script>
 
@@ -372,6 +404,7 @@
       s.dataset.sessionId = SESSION_ID;
       s.dataset.apiUrl = apiUrl;
       s.dataset.clientId = "carrefour_traiteur";
+      s.dataset.sandbox = "true"; // sandbox flag — enables localStorage store persistence
       document.body.appendChild(s);
     })();
   </script>
