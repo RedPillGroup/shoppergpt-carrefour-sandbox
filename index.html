@@ -80,11 +80,11 @@
       justify-content: space-between;
     }
     /* This navbar/footer are just sandbox chrome around the real widget, not
-       part of the product itself — on a short viewport (e.g. an embedded
-       preview frame, a small phone in landscape) they eat into space the
-       widget actually needs more than a demo header/footer does. Below a
-       minimum height, drop them and let the widget take the full screen. */
-    @media (max-height: 500px) {
+       part of the product itself — on mobile (any phone width or a short
+       viewport) they eat into space the widget actually needs more than a
+       demo header/footer does. Drop them entirely there and let the widget
+       take the full screen. */
+    @media (max-width: 768px), (max-height: 500px) {
       body { grid-template-rows: minmax(0, 1fr); }
       .navbar, .footer { display: none; }
     }
