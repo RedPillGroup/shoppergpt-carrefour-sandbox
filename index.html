@@ -67,6 +67,15 @@
       align-items: center;
       justify-content: space-between;
     }
+    /* This navbar/footer are just sandbox chrome around the real widget, not
+       part of the product itself — on a short viewport (e.g. an embedded
+       preview frame, a small phone in landscape) they eat into space the
+       widget actually needs more than a demo header/footer does. Below a
+       minimum height, drop them and let the widget take the full screen. */
+    @media (max-height: 900px) {
+      body { grid-template-rows: minmax(0, 1fr); }
+      .navbar, .footer { display: none; }
+    }
     .modal-overlay {
       display: none;
       position: fixed;
