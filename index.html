@@ -8,14 +8,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 100%; height: 100%; }
+    html { width: 100%; height: 100%; overflow: hidden; }
     body {
-      /* --app-height is kept in sync with window.visualViewport (see the
-         script near the end of <body>) — plain 100vh/100% is the LAYOUT
-         viewport, which iOS Safari does NOT shrink when the keyboard opens;
-         it just scrolls the page, leaving blank space where the body still
-         thinks it has room it visually doesn't anymore. dvh is the fallback
-         for browsers without visualViewport support. */
+      /* position:fixed + inset:0 takes body OUT of the normal document flow
+         entirely, so there's no outer page for iOS to scroll — that's the
+         actual fix. Without this, only body's height was shrinking to match
+         the keyboard-open viewport while html (its containing block) stayed
+         at the full pre-keyboard height, and iOS's "scroll the focused input
+         into view" behavior scrolled that leftover html-level space into
+         view, producing the blank gray gap. --app-height is kept in sync with
+         window.visualViewport (see the script near the end of <body>) — dvh
+         is the fallback for browsers without visualViewport support. */
+      position: fixed;
+      inset: 0;
       height: var(--app-height, 100dvh);
       display: grid;
       grid-template-rows: 60px minmax(0, 1fr) 40px;
