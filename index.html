@@ -180,6 +180,14 @@
       function setAppHeight() {
         const h = vv ? vv.height : window.innerHeight;
         document.documentElement.style.setProperty("--app-height", h + "px");
+        // iOS Safari can still nudge the WINDOW's own scroll position when an
+        // input is focused, even though body is position:fixed (fixed only
+        // stops that position from moving with document scroll — it doesn't
+        // stop Safari's focused-input scroll heuristic from happening in the
+        // first place). That's what produces the "everything floats up,
+        // blank gap left behind" effect. Forcing scroll back to (0,0) on every
+        // visualViewport change neutralizes that drift.
+        window.scrollTo(0, 0);
       }
       setAppHeight();
       if (vv) {
@@ -188,6 +196,7 @@
       } else {
         window.addEventListener("resize", setAppHeight);
       }
+      window.addEventListener("scroll", () => window.scrollTo(0, 0));
     })();
   </script>
 
