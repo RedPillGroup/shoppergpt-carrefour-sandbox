@@ -181,12 +181,11 @@
       const el = document.getElementById("current-store-info");
       if (!el) return;
       if (!currentStore) { el.innerHTML = ""; return; }
-      const modeTxt = currentStore.mode ? ` · ${MODE_LABELS[currentStore.mode] || currentStore.mode}` : "";
       const addr = currentStore.address ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">${currentStore.address}</div>` : "";
       el.innerHTML = `
         <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 14px;margin-bottom:12px;">
           <div style="font-size:11px;color:#004e9a;font-weight:700;text-transform:uppercase;">Magasin sélectionné</div>
-          <div style="font-weight:600;font-size:14px;margin-top:4px;"> ${currentStore.store_name}${modeTxt}</div>
+          <div style="font-weight:600;font-size:14px;margin-top:4px;"> ${currentStore.store_name}</div>
           ${addr}
         </div>`;
     }
@@ -306,8 +305,7 @@
           body: JSON.stringify({ store_id: Number(s.store_id), lad_zone_id: s.lad_zone_id ?? null, mode: s.mode }),
         });
         currentStore = s;
-        const modeTxt = s.mode ? ` · ${MODE_LABELS[s.mode] || s.mode}` : "";
-        document.getElementById("current-store-name").textContent = `${s.store_name}${modeTxt}`;
+        document.getElementById("current-store-name").textContent = `${s.store_name}`;
         window.dispatchEvent(new CustomEvent("shoppergpt:page_context", {
           detail: { store_id: s.store_id, store_name: s.store_name }
         }));
@@ -359,8 +357,7 @@
         mode: detail.mode,
         address: store ? store.address : undefined,
       };
-      const modeTxt = detail.mode ? ` · ${MODE_LABELS[detail.mode] || detail.mode}` : "";
-      document.getElementById("current-store-name").textContent = `${name}${modeTxt}`;
+      document.getElementById("current-store-name").textContent = `${name}`;
     });
 
     window.addEventListener("DOMContentLoaded", () => {
@@ -405,6 +402,15 @@
       s.dataset.apiUrl = apiUrl;
       s.dataset.clientId = "carrefour_traiteur";
       s.dataset.sandbox = "true"; // sandbox flag — enables localStorage store persistence
+
+      // Dev/testing only — open this page with ?mock=event or ?mock=products
+      // to jump straight to that MenuBuilderPanel screen with canned data,
+      // instead of re-chatting through the whole flow on every reload.
+      var mockScreen = new URLSearchParams(window.location.search).get("mock");
+      if (mockScreen === "event" || mockScreen === "products") {
+        s.dataset.mockScreen = mockScreen;
+      }
+
       document.body.appendChild(s);
     })();
   </script>
