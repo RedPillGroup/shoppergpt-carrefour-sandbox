@@ -22,10 +22,19 @@
       position: fixed;
       inset: 0;
       height: var(--app-height, 100dvh);
+      /* Without this, --app-height updates in a single JS-driven frame while
+         the iOS keyboard itself slides up over ~0.25s — the layout "snaps"
+         to its new size a beat before/after the keyboard finishes animating,
+         instead of gliding in sync with it the way native-feeling apps do. */
+      transition: height 0.25s ease-out;
       display: grid;
       grid-template-rows: 60px minmax(0, 1fr) 40px;
       font-family: "Inter", system-ui, sans-serif;
-      background: #f5f7fa;
+      /* White, matching the widget's own background — any leftover sliver of
+         body showing below the widget (e.g. while the keyboard is up) now
+         blends in seamlessly instead of reading as a distinct grey seam,
+         same idea as ChatGPT keeping their body background = their app bg. */
+      background: #ffffff;
       color: #1a1a1a;
       overflow: hidden;
     }
