@@ -8,25 +8,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { width: 100%; height: 100%; overflow: hidden; }
+    html { width: 100%; height: 100%; }
     body {
-      /* position:fixed + inset:0 takes body OUT of the normal document flow
-         entirely, so there's no outer page for iOS to scroll — that's the
-         actual fix. Without this, only body's height was shrinking to match
-         the keyboard-open viewport while html (its containing block) stayed
-         at the full pre-keyboard height, and iOS's "scroll the focused input
-         into view" behavior scrolled that leftover html-level space into
-         view, producing the blank gray gap. --app-height is kept in sync with
-         window.visualViewport (see the script near the end of <body>) — dvh
-         is the fallback for browsers without visualViewport support. */
-      position: fixed;
-      inset: 0;
-      height: var(--app-height, 100dvh);
-      /* Without this, --app-height updates in a single JS-driven frame while
-         the iOS keyboard itself slides up over ~0.25s — the layout "snaps"
-         to its new size a beat before/after the keyboard finishes animating,
-         instead of gliding in sync with it the way native-feeling apps do. */
-      transition: height 0.25s ease-out;
+      /* 100svh = the SMALLEST viewport height the browser will ever report
+         (i.e. with mobile browser chrome/keyboard accounted for), and unlike
+         visualViewport it doesn't change live when the keyboard opens/closes —
+         so the page never resizes or compacts. No position:fixed, no JS
+         height sync needed: body stays in normal document flow, so each
+         browser's own native "scroll the focused input into view" behavior
+         just works, the same default way it does on any other site. */
+      height: 100svh;
       display: grid;
       grid-template-rows: 60px minmax(0, 1fr) 40px;
       font-family: "Inter", system-ui, sans-serif;
@@ -176,38 +167,6 @@
       <button class="modal-close" onclick="closeStoreModal()">Fermer</button>
     </div>
   </div>
-
-  <script>
-    // Sets --app-height ONCE from window.innerHeight (which the iOS keyboard
-    // never changes, unlike visualViewport.height) and never touches it again.
-    // We previously kept --app-height synced to visualViewport on every
-    // resize/scroll so the layout would "fit" around the keyboard — but that's
-    // exactly what caused the reported bug: on some iOS versions this made the
-    // whole app visibly compact/shrink when the keyboard opened, instead of
-    // just letting the keyboard overlay the bottom of a fixed-size page (which
-    // is the native behavior every iPhone already knows how to do consistently).
-    // The page's own size must never change when the keyboard shows or hides —
-    // only forcing scroll back to (0,0) is still needed, since iOS Safari can
-    // nudge the window's scroll position on focus even with body fixed.
-    (function () {
-      document.documentElement.style.setProperty(
-        "--app-height",
-        window.innerHeight + "px"
-      );
-      window.addEventListener("scroll", () => window.scrollTo(0, 0));
-      // Real orientation/size changes (e.g. rotating the device) still need a
-      // fresh height — only the keyboard's own open/close must be ignored, and
-      // rotation doesn't fire visualViewport resize the way the keyboard does.
-      window.addEventListener("orientationchange", () => {
-        setTimeout(() => {
-          document.documentElement.style.setProperty(
-            "--app-height",
-            window.innerHeight + "px"
-          );
-        }, 100);
-      });
-    })();
-  </script>
 
   <script>
     const MODE_LABELS = {
