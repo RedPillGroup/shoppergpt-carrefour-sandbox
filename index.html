@@ -178,45 +178,33 @@
   </div>
 
   <script>
-    // Keeps --app-height (see body{} above) synced to the REAL visible area —
-    // window.visualViewport shrinks when the iOS keyboard opens; window.innerHeight
-    // does not. Without this, the page still thinks it has the pre-keyboard
-    // height, causing the "jump" + blank space under the footer you get when
-    // tapping an input on iOS: the browser scrolls the page up to keep the
-    // input visible, but the body's own height calculation hasn't caught up.
+    // Sets --app-height ONCE from window.innerHeight (which the iOS keyboard
+    // never changes, unlike visualViewport.height) and never touches it again.
+    // We previously kept --app-height synced to visualViewport on every
+    // resize/scroll so the layout would "fit" around the keyboard — but that's
+    // exactly what caused the reported bug: on some iOS versions this made the
+    // whole app visibly compact/shrink when the keyboard opened, instead of
+    // just letting the keyboard overlay the bottom of a fixed-size page (which
+    // is the native behavior every iPhone already knows how to do consistently).
+    // The page's own size must never change when the keyboard shows or hides —
+    // only forcing scroll back to (0,0) is still needed, since iOS Safari can
+    // nudge the window's scroll position on focus even with body fixed.
     (function () {
-      const vv = window.visualViewport;
-      function setAppHeight() {
-        // Pinch-zoom ALSO shrinks visualViewport.height (zooming in shows a
-        // smaller slice of the page), which this listener can't tell apart
-        // from the keyboard opening — without this guard, zooming made the
-        // whole app (chat bar included) collapse to the zoomed-in viewport
-        // height, as if the keyboard had appeared. scale stays 1 for a real
-        // keyboard-open event; it's only !=1 when the user has actually
-        // pinch-zoomed, so skip the resize in that case and leave the layout
-        // (and scroll position) alone.
-        if (vv && vv.scale !== 1) return;
-        const h = vv ? vv.height : window.innerHeight;
-        document.documentElement.style.setProperty("--app-height", h + "px");
-        // iOS Safari can still nudge the WINDOW's own scroll position when an
-        // input is focused, even though body is position:fixed (fixed only
-        // stops that position from moving with document scroll — it doesn't
-        // stop Safari's focused-input scroll heuristic from happening in the
-        // first place). That's what produces the "everything floats up,
-        // blank gap left behind" effect. Forcing scroll back to (0,0) on every
-        // visualViewport change neutralizes that drift.
-        window.scrollTo(0, 0);
-      }
-      setAppHeight();
-      if (vv) {
-        vv.addEventListener("resize", setAppHeight);
-        vv.addEventListener("scroll", setAppHeight);
-      } else {
-        window.addEventListener("resize", setAppHeight);
-      }
-      window.addEventListener("scroll", () => {
-        if (vv && vv.scale !== 1) return;
-        window.scrollTo(0, 0);
+      document.documentElement.style.setProperty(
+        "--app-height",
+        window.innerHeight + "px"
+      );
+      window.addEventListener("scroll", () => window.scrollTo(0, 0));
+      // Real orientation/size changes (e.g. rotating the device) still need a
+      // fresh height — only the keyboard's own open/close must be ignored, and
+      // rotation doesn't fire visualViewport resize the way the keyboard does.
+      window.addEventListener("orientationchange", () => {
+        setTimeout(() => {
+          document.documentElement.style.setProperty(
+            "--app-height",
+            window.innerHeight + "px"
+          );
+        }, 100);
       });
     })();
   </script>
