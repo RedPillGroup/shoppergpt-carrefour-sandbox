@@ -394,46 +394,36 @@
       document.getElementById("current-store-name").textContent = `${name}`;
     });
 
-    window.addEventListener("DOMContentLoaded", () => {
-      updateCartUI();
-      const input = document.getElementById("store-postcode");
-      if (input) {
-        input.addEventListener("keydown", (e) => { if (e.key === "Enter") searchStores(); });
-      }
-      // Restore + re-register stored store before firing initial events so the widget
-      // sees the store immediately on first render (no re-selection needed each reload).
-      restoreStoredStore().finally(() => setTimeout(fireInitialEvents, 500));
-    });
-  </script>
+    // Local = opened from file:// or served on localhost/127.0.0.1
+    var _sandboxHost = window.location.hostname;
+    var _sandboxIsLocal = _sandboxHost === "localhost" || _sandboxHost === "127.0.0.1" || _sandboxHost === "";
+    // Local: hit the waib-api directly on :8000. Deployed: go through the gateway.
+    var _sandboxApiUrl = _sandboxIsLocal ? "http://127.0.0.1:8000" : "https://waib-gateway-dev.redpill.paris";
 
-  <!-- ShopperGPT widget — auto-switches between local dev and deployed -->
-  <script>
-    (function () {
-      // Local = opened from file:// or served on localhost/127.0.0.1
-      var host = window.location.hostname;
-      var isLocal = host === "localhost" || host === "127.0.0.1" || host === "";
-      // Local: hit the waib-api directly on :8000. Deployed: go through the gateway.
-      var apiUrl = isLocal ? "http://127.0.0.1:8000" : "https://waib-gateway-dev.redpill.paris";
+    // Fallback config (the widget prefers the script's data-* below).
+    window.SHOPPERGPT_CONFIG = {
+      apiUrl: _sandboxApiUrl,
+      clientId: "carrefour_traiteur",
+      sessionId: SESSION_ID, // sandbox mock of the Carrefour PHPSESSID
+    };
 
-      // Fallback config (the widget prefers the script's data-* below).
-      window.SHOPPERGPT_CONFIG = {
-        apiUrl: apiUrl,
-        clientId: "carrefour_traiteur",
-        sessionId: SESSION_ID, // sandbox mock of the Carrefour PHPSESSID
-      };
-
+    function loadWidgetScript() {
       // Local: load the freshly-built local bundle (sibling repo on disk).
       // Deployed: load the published bundle from Vercel.
-      var src = isLocal
+      var src = _sandboxIsLocal
         ? "../shopper-gpt-carrefour-scriptag/dist/agent.js"
         : "https://shoppergpt-carrefour-scriptag.vercel.app/agent.js";
 
       var s = document.createElement("script");
       s.src = src;
-      s.defer = true;
-      // Mirror the prod embed: session + api passed via data-* on the script tag.
+      // NOTE: `defer` has NO effect on a script created via document.createElement —
+      // that attribute only applies to scripts written directly in the HTML and
+      // parsed normally. A dynamically-inserted script runs as soon as it loads,
+      // independent of DOMContentLoaded — which is exactly why this used to race
+      // restoreStoredStore()'s async POST /store/set below (the widget could send
+      // its first message before the backend had recorded the selected store).
       s.dataset.sessionId = SESSION_ID;
-      s.dataset.apiUrl = apiUrl;
+      s.dataset.apiUrl = _sandboxApiUrl;
       s.dataset.clientId = "carrefour_traiteur";
       s.dataset.sandbox = "true"; // sandbox flag — enables localStorage store persistence
 
@@ -446,7 +436,23 @@
       }
 
       document.body.appendChild(s);
-    })();
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      updateCartUI();
+      const input = document.getElementById("store-postcode");
+      if (input) {
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") searchStores(); });
+      }
+      // Restore + re-register the stored store BEFORE the widget script can run at
+      // all — otherwise its very first message can reach the backend before this
+      // async POST /store/set resolves, and the store is silently missing server-side
+      // even though the page's own store pill already shows it as selected.
+      restoreStoredStore().finally(() => {
+        setTimeout(fireInitialEvents, 500);
+        loadWidgetScript();
+      });
+    });
   </script>
 </body>
 </html>
