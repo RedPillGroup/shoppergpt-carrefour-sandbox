@@ -181,7 +181,21 @@
 
     // One session id for the whole page = the X-Session-Id (PHPSESSID in prod).
     // Keys the backend state/history/store. In prod this comes from the Magento cookie.
-    const SESSION_ID = "sess_" + Math.random().toString(36).slice(2, 12);
+    // Sandbox: persist across refresh so multi-conversation (same PHPSESSID, many
+    // conversation_id threads) can be exercised locally. Prod still injects the
+    // real cookie server-side.
+    const SESSION_STORAGE_KEY = "shoppergpt_sandbox_session_id";
+    const SESSION_ID = (function () {
+      try {
+        const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (saved) return saved;
+      } catch (_) { /* private mode / blocked storage */ }
+      const id = "sess_" + Math.random().toString(36).slice(2, 12);
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, id);
+      } catch (_) { /* ignore */ }
+      return id;
+    })();
 
     function apiBase() {
       return (window.SHOPPERGPT_CONFIG && window.SHOPPERGPT_CONFIG.apiUrl) || "";
@@ -411,7 +425,7 @@
       // Local: load the freshly-built local bundle (sibling repo on disk).
       // Deployed: load the published bundle from Vercel.
       var src = isLocal
-        ? "../shopper-gpt-carrefour-scriptag/dist/agent.js"
+        ? "../shoppergpt-carrefour-scriptag/dist/agent.js"
         : "https://shoppergpt-carrefour-scriptag.vercel.app/agent.js";
 
       var s = document.createElement("script");
