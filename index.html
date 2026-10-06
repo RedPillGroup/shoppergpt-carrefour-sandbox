@@ -397,8 +397,30 @@
     // Local = opened from file:// or served on localhost/127.0.0.1
     var _sandboxHost = window.location.hostname;
     var _sandboxIsLocal = _sandboxHost === "localhost" || _sandboxHost === "127.0.0.1" || _sandboxHost === "";
-    // Local: hit the waib-api directly on :8000. Deployed: go through the gateway.
-    var _sandboxApiUrl = _sandboxIsLocal ? "http://127.0.0.1:8000" : "https://waib-gateway-dev.redpill.paris";
+    // Backend selection. Local: hit the waib-api directly on :8000. Deployed: go through
+    // a gateway — dev by default, or prod with ?env=prod (remembered in localStorage;
+    // ?env=dev switches back). A banner makes a non-dev backend impossible to miss.
+    var _SANDBOX_GATEWAYS = {
+      dev: "https://waib-gateway-dev.redpill.paris",
+      prod: "https://waib-gateway.redpill.paris",
+    };
+    // Widget bundle per env — the Vercel project serves `develop` on the preprod domain
+    // and `main` (production) on the prod domain, so each env tests its own build.
+    var _SANDBOX_WIDGETS = {
+      dev: "https://shoppergpt.new.preprod.traiteur.carrefour.fr/agent.js",
+      prod: "https://shoppergpt.traiteur.carrefour.fr/agent.js",
+    };
+    var _sandboxQuery = new URLSearchParams(window.location.search);
+    var _sandboxEnv = "dev";
+    try {
+      var _envParam = (_sandboxQuery.get("env") || "").toLowerCase();
+      if (_envParam in _SANDBOX_GATEWAYS) localStorage.setItem("shoppergpt_sandbox_env", _envParam);
+      var _storedEnv = localStorage.getItem("shoppergpt_sandbox_env");
+      if (_storedEnv in _SANDBOX_GATEWAYS) _sandboxEnv = _storedEnv;
+    } catch (e) {
+      /* localStorage unavailable — stay on dev */
+    }
+    var _sandboxApiUrl = _sandboxIsLocal ? "http://127.0.0.1:8000" : _SANDBOX_GATEWAYS[_sandboxEnv];
 
     // Fallback config (the widget prefers the script's data-* below).
     window.SHOPPERGPT_CONFIG = {
@@ -410,9 +432,12 @@
     function loadWidgetScript() {
       // Local: load the freshly-built local bundle (sibling repo on disk).
       // Deployed: load the published bundle from Vercel.
-      var src = _sandboxIsLocal
-        ? "../shopper-gpt-carrefour-scriptag/dist/agent.js"
-        : "https://shoppergpt-carrefour-scriptag.vercel.app/agent.js";
+      // ?widget=<url> overrides the bundle (e.g. any other Vercel deployment to try).
+      var src =
+        _sandboxQuery.get("widget") ||
+        (_sandboxIsLocal
+          ? "../shopper-gpt-carrefour-scriptag/dist/agent.js"
+          : _SANDBOX_WIDGETS[_sandboxEnv]);
 
       var s = document.createElement("script");
       s.src = src;
@@ -439,6 +464,14 @@
     }
 
     window.addEventListener("DOMContentLoaded", () => {
+      if (!_sandboxIsLocal && _sandboxEnv !== "dev") {
+        var banner = document.createElement("div");
+        banner.textContent = "Backend: " + _sandboxEnv.toUpperCase() + " — " + _sandboxApiUrl + "  (?env=dev to switch back)";
+        banner.style.cssText =
+          "position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#c0392b;color:#fff;" +
+          "font:600 12px/1 Inter,sans-serif;text-align:center;padding:6px 8px;";
+        document.body.appendChild(banner);
+      }
       updateCartUI();
       const input = document.getElementById("store-postcode");
       if (input) {
